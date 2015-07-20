@@ -1,7 +1,3 @@
-/**
- * Copyright(c) 2015 Merkle Inc.  All Rights Reserved.
- * This software is the proprietary information of Merkle Inc.
- */
 package com.luo;
 
 import org.apache.commons.cli.*;

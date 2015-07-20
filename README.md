@@ -14,3 +14,5 @@ Parameters:
 
 Sample:
   hadoop jar smarthbasecompactor-1.0-SNAPSHOT.jar com.luo.HbaseMgr -libjars ${HADOOP_LIB_JARS} -t 30 -f 2 -c 2
+
+The code is tested on hbase 0.98. Not sure if it works for earlier version or not.
