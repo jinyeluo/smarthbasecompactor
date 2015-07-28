@@ -6,9 +6,9 @@ import static java.lang.Integer.parseInt;
 
 public class ParameterParser {
 
-    private final int serverConcurrency;
-    private final int minFileCount;
-    private final int timePeriod;
+    private int serverConcurrency;
+    private int minFileCount;
+    private int timePeriod;
 
     public ParameterParser(String[] args) {
         Options options = createOption();
@@ -17,8 +17,17 @@ public class ParameterParser {
             CommandLine commandLine = parser.parse(options, args);
 
             timePeriod = parseInt(commandLine.getOptionValue("t", "30"));
+            if (timePeriod < 1) {
+                timePeriod = 1;
+            }
             minFileCount = parseInt(commandLine.getOptionValue("f", "2"));
+            if (minFileCount < 1) {
+                minFileCount = 1;
+            }
             serverConcurrency = parseInt(commandLine.getOptionValue("c", "2"));
+            if (serverConcurrency < 1) {
+                serverConcurrency = 1;
+            }
         } catch (ParseException e) {
             HelpFormatter formatter = new HelpFormatter();
             formatter.printHelp(ParameterParser.class.getName(), options);
