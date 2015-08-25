@@ -7,7 +7,9 @@ Parameters:
 * -c,--serverConcurrency <minFileThreshold>   
   * max # of regions will be compacted at the same time per server, default to 2
 * -f,--minFileThreshold <minFileThreshold>    
-  * any region with >= fileCount will be compact candidate, defaulted to 2
+  * any region with fileCount >= (minFileThreshold + columnFamily) will be compact candidate. 
+  * Defaulted to 1, meaning if fileCount > columnFamily, it will be a candidate.
+  * Setting it to 0 means try to compact all regions. Regions with more files will still be compacted first.
 * -t,--runPeriod <runPeriod>                  
   * # of minutes it should run, 30 for half an hour and -1 for forever
 

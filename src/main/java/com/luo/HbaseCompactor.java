@@ -189,7 +189,7 @@ public class HbaseCompactor {
     private Map<String, List<RegionInfo>> filterRegions(Map<String, RegionInfo> aRegionInfos) {
         HashMap<String, List<RegionInfo>> result = new HashMap<>();
         for (RegionInfo regionInfo : aRegionInfos.values()) {
-            if (!regionInfo.isSystemTable() && regionInfo.getFileCount() >= compactMinFileCount) {
+            if (!regionInfo.isSystemTable() && regionInfo.getFileCountMinusCF() >= compactMinFileCount) {
                 List<RegionInfo> regionsPerServer = result.get(regionInfo.getServer());
                 if (regionsPerServer == null) {
                     regionsPerServer = new ArrayList<>();
@@ -245,6 +245,7 @@ public class HbaseCompactor {
                         info.setName(region.getRegionNameAsString());
                         info.setTableName(tableName.getNameAsString());
                         info.setSystemTable(region.getTable().isSystemTable());
+                        info.setColumnFamilyCount(tableDescriptor.getColumnFamilies().length);
                         regionInfos.put(info.getName(), info);
                     }
                 }
@@ -261,7 +262,7 @@ public class HbaseCompactor {
     private static class RegionInfoComparator implements Comparator<RegionInfo> {
         @Override
         public int compare(RegionInfo o1, RegionInfo o2) {
-            int delta = o2.getFileCount() - o1.getFileCount();
+            int delta = o2.getFileCountMinusCF() - o1.getFileCountMinusCF();
             if (delta != 0) {
                 return delta;
             } else {

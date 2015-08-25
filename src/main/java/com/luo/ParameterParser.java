@@ -20,9 +20,9 @@ public class ParameterParser {
             if (timePeriod < 1) {
                 timePeriod = 1;
             }
-            minFileCount = parseInt(commandLine.getOptionValue("f", "2"));
-            if (minFileCount < 2) {
-                minFileCount = 2;
+            minFileCount = parseInt(commandLine.getOptionValue("f", "1"));
+            if (minFileCount < 0) {
+                minFileCount = 0;
             }
             serverConcurrency = parseInt(commandLine.getOptionValue("c", "2"));
             if (serverConcurrency < 1) {
