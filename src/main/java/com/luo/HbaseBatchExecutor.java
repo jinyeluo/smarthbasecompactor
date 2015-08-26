@@ -56,7 +56,7 @@ public class HbaseBatchExecutor {
         try {
             admin.compactRegion(null, request);
         } catch (ServiceException se) {
-            throw ProtobufUtil.getRemoteException(se);
+            LOGGER.warn("exception happened, but process continues", ProtobufUtil.getRemoteException(se));
         }
     }
 
