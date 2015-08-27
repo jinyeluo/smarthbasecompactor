@@ -1,5 +1,7 @@
 package com.luo;
 
+import org.apache.hadoop.hbase.ServerName;
+
 public class RegionInfo {
     private String name;
     private long activityCount;
@@ -7,7 +9,7 @@ public class RegionInfo {
     private int storeCount;
     private String tableName;
     private boolean systemTable;
-    private String server;
+    private ServerName server;
     private int columnFamilyCount;
 
     public RegionInfo() {
@@ -49,11 +51,11 @@ public class RegionInfo {
         systemTable = aSystemTable;
     }
 
-    public void setServer(String aServer) {
+    public void setServer(ServerName aServer) {
         server = aServer;
     }
 
-    public String getServer() {
+    public ServerName getServer() {
         return server;
     }
 
