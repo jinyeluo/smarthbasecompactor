@@ -3,7 +3,6 @@ package com.luo;
 import org.apache.hadoop.hbase.ServerName;
 
 public class RegionInfo {
-    private String name;
     private long activityCount;
     private int fileCount;
     private int storeCount;
@@ -11,16 +10,13 @@ public class RegionInfo {
     private boolean systemTable;
     private ServerName server;
     private int columnFamilyCount;
+    private RegionName regionName;
 
     public RegionInfo() {
     }
 
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String aName) {
-        name = aName;
+    public RegionName getRegionName() {
+        return regionName;
     }
 
     public long getActivityCount() {
@@ -75,7 +71,7 @@ public class RegionInfo {
     @Override
     public String toString() {
         return "RegionInfo{" +
-            "name='" + name + '\'' +
+            "name='" + regionName + '\'' +
             ", activityCount=" + activityCount +
             ", fileCount=" + fileCount +
             ", storeCount=" + storeCount +
@@ -112,7 +108,7 @@ public class RegionInfo {
         if (columnFamilyCount != that.columnFamilyCount) {
             return false;
         }
-        if (name != null ? !name.equals(that.name) : that.name != null) {
+        if (regionName != null ? !regionName.equals(that.regionName) : that.regionName != null) {
             return false;
         }
         if (tableName != null ? !tableName.equals(that.tableName) : that.tableName != null) {
@@ -124,7 +120,7 @@ public class RegionInfo {
 
     @Override
     public int hashCode() {
-        int result = name != null ? name.hashCode() : 0;
+        int result = regionName != null ? regionName.hashCode() : 0;
         result = 31 * result + (int) (activityCount ^ (activityCount >>> 32));
         result = 31 * result + fileCount;
         result = 31 * result + storeCount;
@@ -133,5 +129,9 @@ public class RegionInfo {
         result = 31 * result + (server != null ? server.hashCode() : 0);
         result = 31 * result + columnFamilyCount;
         return result;
+    }
+
+    public void setRegionName(byte[] aRegionName) {
+        regionName = new RegionName(aRegionName);
     }
 }
