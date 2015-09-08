@@ -1,21 +1,22 @@
 package com.luo;
 
+import org.apache.hadoop.hbase.ServerName;
+
 public class RegionInfo {
-    public static final int INT_32 = 32;
-    private String name;
     private long activityCount;
     private int fileCount;
     private int storeCount;
     private String tableName;
     private boolean systemTable;
-    private String server;
+    private ServerName server;
+    private int columnFamilyCount;
+    private RegionName regionName;
 
-    public String getName() {
-        return name;
+    public RegionInfo() {
     }
 
-    public void setName(String aName) {
-        name = aName;
+    public RegionName getRegionName() {
+        return regionName;
     }
 
     public long getActivityCount() {
@@ -26,24 +27,12 @@ public class RegionInfo {
         activityCount = aActivityCount;
     }
 
-    public int getFileCount() {
-        return fileCount;
-    }
-
     public void setFileCount(int aFileCount) {
         fileCount = aFileCount;
     }
 
-    public int getStoreCount() {
-        return storeCount;
-    }
-
     public void setStoreCount(int aStoreCount) {
         storeCount = aStoreCount;
-    }
-
-    public String getTableName() {
-        return tableName;
     }
 
     public void setTableName(String aTableName) {
@@ -58,24 +47,39 @@ public class RegionInfo {
         systemTable = aSystemTable;
     }
 
-    public void setServer(String aServer) {
+    public void setServer(ServerName aServer) {
         server = aServer;
     }
 
-    public String getServer() {
+    public ServerName getServer() {
         return server;
+    }
+
+    public void setColumnFamilyCount(int aColumnFamilyCount) {
+        columnFamilyCount = aColumnFamilyCount;
+    }
+
+    public int getFileCountMinusCF() {
+        int delta = fileCount - columnFamilyCount;
+        if (delta > 0) {
+            return delta;
+        } else {
+            return 0;
+        }
     }
 
     @Override
     public String toString() {
-        return "RegionInfo{"
-            + "name='" + name + '\''
-            + ", activityCount=" + activityCount
-            + ", fileCount=" + fileCount
-            + ", storeCount=" + storeCount
-            + ", tableName='" + tableName + '\''
-            + ", systemTable=" + systemTable
-            + '}';
+        return "RegionInfo{" +
+            "name='" + regionName + '\'' +
+            ", activityCount=" + activityCount +
+            ", fileCount=" + fileCount +
+            ", storeCount=" + storeCount +
+            ", tableName='" + tableName + '\'' +
+            ", systemTable=" + systemTable +
+            ", server='" + server + '\'' +
+            ", columnFamilyCount=" + columnFamilyCount +
+            '}';
     }
 
     @Override
@@ -101,28 +105,33 @@ public class RegionInfo {
         if (systemTable != that.systemTable) {
             return false;
         }
-        if (name != null ? !name.equals(that.name) : that.name != null) {
+        if (columnFamilyCount != that.columnFamilyCount) {
             return false;
         }
-        if (server != null ? !server.equals(that.server) : that.server != null) {
+        if (regionName != null ? !regionName.equals(that.regionName) : that.regionName != null) {
             return false;
         }
         if (tableName != null ? !tableName.equals(that.tableName) : that.tableName != null) {
             return false;
         }
+        return !(server != null ? !server.equals(that.server) : that.server != null);
 
-        return true;
     }
 
     @Override
     public int hashCode() {
-        int result = name != null ? name.hashCode() : 0;
-        result = 31 * result + (int) (activityCount ^ (activityCount >>> INT_32));
+        int result = regionName != null ? regionName.hashCode() : 0;
+        result = 31 * result + (int) (activityCount ^ (activityCount >>> 32));
         result = 31 * result + fileCount;
         result = 31 * result + storeCount;
         result = 31 * result + (tableName != null ? tableName.hashCode() : 0);
         result = 31 * result + (systemTable ? 1 : 0);
         result = 31 * result + (server != null ? server.hashCode() : 0);
+        result = 31 * result + columnFamilyCount;
         return result;
+    }
+
+    public void setRegionName(byte[] aRegionName) {
+        regionName = new RegionName(aRegionName);
     }
 }

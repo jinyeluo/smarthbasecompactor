@@ -13,12 +13,14 @@ import java.util.*;
 public class HbaseCompactor {
 
     public static final int TIMEOUT = 1000 * 60;
-    public static final int MINTUES_TO_MS = 60 * 1000;
+    public static final int MINUTES_TO_MS = 60 * 1000;
     public static final RegionInfoComparator REGION_INFO_COMPARATOR = new RegionInfoComparator();
 
     private static final Logger LOGGER = LoggerFactory.getLogger(HbaseMgr.class);
 
-    private Map<ServerName, List<RegionInfo>> compactingRegions = new HashMap<>();
+    private Map<ServerName, List<RegionInfo>> compactingRegions = new TreeMap<>();
+    private Map<ServerName, Set<RegionName>> compactedRegions = new HashMap<>();
+    private Map<ServerName, Integer> compactIterationCount = new HashMap<>();
 
     private int compactMinFileCount;
     private int maxCompactingRegionPerServer;
@@ -31,7 +33,7 @@ public class HbaseCompactor {
     public void collectCompactInfo(Configuration conf) throws IOException, InterruptedException {
         HBaseAdmin hBaseAdmin = new HBaseAdmin(conf);
         HConnection connection = hBaseAdmin.getConnection();
-        Map<String, RegionInfo> regionInfoMap =
+        Map<RegionName, RegionInfo> regionInfoMap =
             constructInitialRegionInfos(hBaseAdmin, connection.listTables());
 
         ClusterStatus clusterStatus = hBaseAdmin.getClusterStatus();
@@ -42,21 +44,25 @@ public class HbaseCompactor {
             executor = new HbaseBatchExecutor(hBaseAdmin);
 
             for (ServerName server : servers) {
-                List<RegionInfo> regionsOnAServer = new LinkedList<>();
+                if (server != null) {
 
-                ServerLoad load = clusterStatus.getLoad(server);
-                Map<byte[], RegionLoad> regionsLoad = load.getRegionsLoad();
-                for (RegionLoad regionLoad : regionsLoad.values()) {
-                    String regionName = regionLoad.getNameAsString();
-                    RegionInfo regionInfo = regionInfoMap.get(regionName);
-                    if (regionInfo != null) {
-                        regionsOnAServer.add(regionInfo);
+                    List<RegionInfo> regionsOnAServer = new LinkedList<>();
+
+                    ServerLoad load = clusterStatus.getLoad(server);
+                    Map<byte[], RegionLoad> regionsLoad = load.getRegionsLoad();
+                    for (RegionLoad regionLoad : regionsLoad.values()) {
+                        RegionName regionName = new RegionName(regionLoad.getName());
+                        RegionInfo regionInfo = regionInfoMap.get(regionName);
+                        if (regionInfo != null) {
+                            regionsOnAServer.add(regionInfo);
+                        }
                     }
-                }
 
-                List<RegionInfo> compactingRegionsOnAServer =
-                    executor.getCompactingRegions(server, regionsOnAServer);
-                compactingRegions.put(server, compactingRegionsOnAServer);
+                    List<RegionInfo> compactingRegionsOnAServer =
+                        executor.getCompactingRegions(server, regionsOnAServer);
+                    compactingRegions.put(server, compactingRegionsOnAServer);
+                    addToCompactedSet(server, compactingRegionsOnAServer);
+                }
             }
         } finally {
             if (executor != null) {
@@ -64,15 +70,25 @@ public class HbaseCompactor {
             }
         }
 
-        LOGGER.info("compacting regions:");
         printoutFilteredRegions(compactingRegions);
+    }
+
+    public void printOutRegionsPerServer(Configuration conf) throws IOException {
+        HBaseAdmin hBaseAdmin = new HBaseAdmin(conf);
+        HConnection connection = hBaseAdmin.getConnection();
+        HTableDescriptor[] hTableDescriptors = connection.listTables();
+
+        Map<RegionName, RegionInfo> regionInfos = constructInitialRegionInfos(hBaseAdmin, hTableDescriptors);
+        collectRegionMetrics(regionInfos, hBaseAdmin);
+        LOGGER.info("total regions: {}", regionInfos.size());
+        printoutCompactDetail(filterRegions(regionInfos));
     }
 
     public void majorCompact(Configuration conf, int runTimeInMinute) throws IOException, InterruptedException {
         long startTime = System.currentTimeMillis();
         long stopTime;
         if (runTimeInMinute > 0) {
-            stopTime = runTimeInMinute * MINTUES_TO_MS + startTime;
+            stopTime = runTimeInMinute * MINUTES_TO_MS + startTime;
         } else {
             stopTime = Long.MAX_VALUE;
         }
@@ -85,11 +101,11 @@ public class HbaseCompactor {
             HConnection connection = hBaseAdmin.getConnection();
             HTableDescriptor[] hTableDescriptors = connection.listTables();
 
-            Map<String, RegionInfo> regionInfos = constructInitialRegionInfos(hBaseAdmin, hTableDescriptors);
+            Map<RegionName, RegionInfo> regionInfos = constructInitialRegionInfos(hBaseAdmin, hTableDescriptors);
 
             collectRegionMetrics(regionInfos, hBaseAdmin);
 
-            Map<String, List<RegionInfo>> filteredRegions = filterRegions(regionInfos);
+            Map<ServerName, List<RegionInfo>> filteredRegions = filterRegions(regionInfos);
             printoutCompactSummary(filteredRegions);
 
             waitAMinute();
@@ -99,13 +115,27 @@ public class HbaseCompactor {
         }
     }
 
-    private void printoutCompactSummary(Map<String, List<RegionInfo>> aFilteredRegions) {
-        for (Map.Entry<String, List<RegionInfo>> entry : aFilteredRegions.entrySet()) {
-            LOGGER.info("To be compacted:{}->{}", entry.getKey(), entry.getValue().size());
+    private void printoutCompactSummary(Map<ServerName, List<RegionInfo>> aFilteredRegions) {
+        for (Map.Entry<ServerName, List<RegionInfo>> entry : aFilteredRegions.entrySet()) {
+            Integer count = compactIterationCount.get(entry.getKey());
+            if (count == null) {
+                count = 0;
+            }
+
+            LOGGER.info("To be compacted:{}->{}", entry.getKey() + "(" + count + ")", entry.getValue().size());
         }
     }
 
-    protected void printoutFilteredRegions(Map<ServerName, List<RegionInfo>> aFilteredRegions) {
+    private void printoutCompactDetail(Map<ServerName, List<RegionInfo>> aFilteredRegions) {
+        for (Map.Entry<ServerName, List<RegionInfo>> entry : aFilteredRegions.entrySet()) {
+            LOGGER.info("To be compacted:{}->{}", entry.getKey(), entry.getValue().size());
+            for (RegionInfo regionInfo : entry.getValue()) {
+                LOGGER.info("To be compacted:{}->{}", entry.getKey(), regionInfo.getRegionName());
+            }
+        }
+    }
+
+    private void printoutFilteredRegions(Map<ServerName, List<RegionInfo>> aFilteredRegions) {
         for (Map.Entry<ServerName, List<RegionInfo>> entry : aFilteredRegions.entrySet()) {
             for (int i = 0; i < entry.getValue().size(); i++) {
                 RegionInfo info = entry.getValue().get(i);
@@ -115,7 +145,7 @@ public class HbaseCompactor {
     }
 
     private void findNonActiveRegionsAndCompact(HBaseAdmin aHBaseAdmin,
-        Map<String, List<RegionInfo>> aFilteredRegions) throws IOException, InterruptedException {
+        Map<ServerName, List<RegionInfo>> aFilteredRegions) throws IOException, InterruptedException {
         ClusterStatus clusterStatus = aHBaseAdmin.getClusterStatus();
 
         HbaseBatchExecutor executor = null;
@@ -128,19 +158,23 @@ public class HbaseCompactor {
                 if (compactingCount < maxCompactingRegionPerServer) {
                     ServerLoad load = clusterStatus.getLoad(server);
                     Map<byte[], RegionLoad> regionsLoad = load.getRegionsLoad();
-                    for (Map.Entry<byte[], RegionLoad> regionLoadEntry : regionsLoad.entrySet()) {
-                        RegionLoad regionLoad = regionLoadEntry.getValue();
-                        String regionName = regionLoad.getNameAsString();
-                        RegionInfo savedInfo = findSavedInfo(server.getServerName(), regionName, aFilteredRegions);
-                        if (savedInfo != null) {
+
+                    List<RegionInfo> regionInfos = aFilteredRegions.get(server);
+                    for (int i = 0; regionInfos != null && i < regionInfos.size(); i++) {
+                        RegionInfo savedInfo = regionInfos.get(i);
+                        RegionLoad regionLoad = regionsLoad.get(savedInfo.getRegionName().toByteBinary());
+                        if (regionLoad == null) {
+                            LOGGER.warn("!!regionLoad doesn't have this region:{}", savedInfo.getRegionName());
+                        } else {
                             long requestsCount = regionLoad.getRequestsCount();
-                            if (savedInfo.getActivityCount() != requestsCount)
+                            if (savedInfo.getActivityCount() != requestsCount) {
                                 LOGGER.info("Region Busy:{} {}", requestsCount - savedInfo.getActivityCount(),
-                                    regionName);
-                            else {
+                                    savedInfo.getRegionName());
+                            } else {
                                 compactingCount = bookKeepingCompactingRegion(server, savedInfo);
-                                LOGGER.info("Start Compact:{}", savedInfo.getName());
-                                executor.majorCompact(server, savedInfo.getName());
+                                LOGGER.info("Start Compact:{} with fileCountMinusCF={}", savedInfo.getRegionName(),
+                                    savedInfo.getFileCountMinusCF());
+                                executor.majorCompact(server, savedInfo.getRegionName());
                                 if (compactingCount >= maxCompactingRegionPerServer) {
                                     break;
                                 }
@@ -157,6 +191,8 @@ public class HbaseCompactor {
     }
 
     private int bookKeepingCompactingRegion(ServerName aServer, RegionInfo aRegionInfo) {
+        addToCompactedSet(aServer, aRegionInfo);
+
         List<RegionInfo> regionInfos = compactingRegions.get(aServer);
         if (regionInfos == null) {
             regionInfos = new ArrayList<>();
@@ -174,28 +210,26 @@ public class HbaseCompactor {
         }
     }
 
-    private RegionInfo findSavedInfo(String aServerName, String aRegionName,
-        Map<String, List<RegionInfo>> aFilteredRegions) {
-        List<RegionInfo> regionInfos = aFilteredRegions.get(aServerName);
-        for (int i = 0; regionInfos != null && i < regionInfos.size(); i++) {
-            RegionInfo regionInfo = regionInfos.get(i);
-            if (regionInfo.getName().equals(aRegionName)) {
-                return regionInfo;
-            }
-        }
-        return null;
-    }
-
-    private Map<String, List<RegionInfo>> filterRegions(Map<String, RegionInfo> aRegionInfos) {
-        HashMap<String, List<RegionInfo>> result = new HashMap<>();
+    /**
+     * @return serverName to list of regions
+     */
+    private Map<ServerName, List<RegionInfo>> filterRegions(Map<RegionName, RegionInfo> aRegionInfos) {
+        HashMap<ServerName, List<RegionInfo>> result = new HashMap<>();
         for (RegionInfo regionInfo : aRegionInfos.values()) {
-            if (!regionInfo.isSystemTable() && regionInfo.getFileCount() >= compactMinFileCount) {
-                List<RegionInfo> regionsPerServer = result.get(regionInfo.getServer());
-                if (regionsPerServer == null) {
-                    regionsPerServer = new ArrayList<>();
-                    result.put(regionInfo.getServer(), regionsPerServer);
-                    regionsPerServer.add(regionInfo);
-                } else {
+//            LOGGER.info("add region to server: {}, {}", regionInfo.getServer(),
+//                regionInfo.getRegionName().toString() + regionInfo
+//                    .isSystemTable() + regionInfo.getFileCountMinusCF() + alreadyCompacted(regionInfo));
+            if (!regionInfo.isSystemTable()
+                && regionInfo.getFileCountMinusCF() >= compactMinFileCount
+                && !alreadyCompacted(regionInfo)) {
+                ServerName server = regionInfo.getServer();
+                if (server != null) {
+                    List<RegionInfo> regionsPerServer = result.get(server);
+                    if (regionsPerServer == null) {
+                        regionsPerServer = new ArrayList<>();
+                        result.put(server, regionsPerServer);
+                    }
+
                     regionsPerServer.add(regionInfo);
                 }
             }
@@ -204,10 +238,34 @@ public class HbaseCompactor {
         for (List<RegionInfo> regionInfos : result.values()) {
             Collections.sort(regionInfos, REGION_INFO_COMPARATOR);
         }
+
+        //if there is no region to compact, meaning the serverName is not in result, then clear compactedList to
+        // start the whole thing over
+        for (Map.Entry<ServerName, Set<RegionName>> compactedEntry : compactedRegions.entrySet()) {
+            if (!result.containsKey(compactedEntry.getKey())) {
+                compactedEntry.getValue().clear();
+
+                increaseIteration(compactedEntry.getKey());
+            }
+        }
         return result;
     }
 
-    protected void collectRegionMetrics(Map<String, RegionInfo> aRegionInfos,
+    private void increaseIteration(ServerName aKey) {
+        Integer count = compactIterationCount.get(aKey);
+        if (count == null) {
+            compactIterationCount.put(aKey, 1);
+        } else {
+            compactIterationCount.put(aKey, count + 1);
+        }
+    }
+
+    private boolean alreadyCompacted(RegionInfo aRegionInfo) {
+        Set<RegionName> regions = compactedRegions.get(aRegionInfo.getServer());
+        return regions != null && regions.contains(aRegionInfo.getRegionName());
+    }
+
+    protected void collectRegionMetrics(Map<RegionName, RegionInfo> aRegionInfos,
         HBaseAdmin hBaseAdmin) throws IOException {
         ClusterStatus clusterStatus = hBaseAdmin.getClusterStatus();
 
@@ -217,20 +275,24 @@ public class HbaseCompactor {
             Map<byte[], RegionLoad> regionsLoad = load.getRegionsLoad();
             for (Map.Entry<byte[], RegionLoad> regionLoadEntry : regionsLoad.entrySet()) {
                 RegionLoad regionLoad = regionLoadEntry.getValue();
-                RegionInfo regionInfo = aRegionInfos.get(regionLoad.getNameAsString());
+                RegionInfo regionInfo = aRegionInfos.get(new RegionName(regionLoad.getName()));
+                if (regionInfo == null) {
+                    LOGGER.error("cannot find regionInfo:{}", regionLoad.getNameAsString());
+                }
+
                 if (regionInfo != null && !regionInfo.isSystemTable()) {
                     regionInfo.setFileCount(regionLoad.getStorefiles());
                     regionInfo.setStoreCount(regionLoad.getStores());
                     regionInfo.setActivityCount(regionLoad.getRequestsCount());
-                    regionInfo.setServer(server.getServerName());
+                    regionInfo.setServer(server);
                 }
             }
         }
     }
 
-    protected Map<String, RegionInfo> constructInitialRegionInfos(HBaseAdmin aHBaseAdmin,
+    protected Map<RegionName, RegionInfo> constructInitialRegionInfos(HBaseAdmin aHBaseAdmin,
         HTableDescriptor[] aHTableDescriptors) throws IOException {
-        Map<String, RegionInfo> regionInfos = new HashMap<>();
+        Map<RegionName, RegionInfo> regionInfos = new HashMap<>();
 
         HbaseBatchExecutor executor = null;
         try {
@@ -242,10 +304,11 @@ public class HbaseCompactor {
                 for (HRegionInfo region : tableRegions) {
                     if (!region.isMetaRegion() && !region.isOffline() && !region.isSplit() && !region.isSplitParent()) {
                         RegionInfo info = new RegionInfo();
-                        info.setName(region.getRegionNameAsString());
+                        info.setRegionName(region.getRegionName());
                         info.setTableName(tableName.getNameAsString());
                         info.setSystemTable(region.getTable().isSystemTable());
-                        regionInfos.put(info.getName(), info);
+                        info.setColumnFamilyCount(tableDescriptor.getColumnFamilies().length);
+                        regionInfos.put(info.getRegionName(), info);
                     }
                 }
             }
@@ -261,11 +324,11 @@ public class HbaseCompactor {
     private static class RegionInfoComparator implements Comparator<RegionInfo> {
         @Override
         public int compare(RegionInfo o1, RegionInfo o2) {
-            int delta = o2.getFileCount() - o1.getFileCount();
+            int delta = o2.getFileCountMinusCF() - o1.getFileCountMinusCF();
             if (delta != 0) {
                 return delta;
             } else {
-                return o2.getName().compareTo(o1.getName());
+                return o2.getRegionName().toString().compareTo(o1.getRegionName().toString());
             }
         }
     }
@@ -281,7 +344,7 @@ public class HbaseCompactor {
                 RegionInfo next = iterator.next();
                 if (!compacting.contains(next)) {
                     iterator.remove();
-                    LOGGER.info("done compact:{}", next.getName());
+                    LOGGER.info("done compact:{}", next.getRegionName());
                 }
             }
             return regionInfos.size();
@@ -290,4 +353,23 @@ public class HbaseCompactor {
         }
     }
 
+    private void addToCompactedSet(ServerName aServer, List<RegionInfo> aCompacting) {
+        Set<RegionName> regions = compactedRegions.get(aServer);
+        if (regions == null) {
+            regions = new HashSet<>();
+            compactedRegions.put(aServer, regions);
+        }
+        for (RegionInfo compactingRegion : aCompacting) {
+            regions.add(compactingRegion.getRegionName());
+        }
+    }
+
+    private void addToCompactedSet(ServerName aServer, RegionInfo aCompacting) {
+        Set<RegionName> regions = compactedRegions.get(aServer);
+        if (regions == null) {
+            regions = new HashSet<>();
+            compactedRegions.put(aServer, regions);
+        }
+        regions.add(aCompacting.getRegionName());
+    }
 }

@@ -15,7 +15,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
-import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,7 +25,6 @@ import static org.apache.hadoop.hbase.protobuf.generated.AdminProtos.GetRegionIn
 public class HbaseBatchExecutor {
     private static final Logger LOGGER = LoggerFactory.getLogger(HbaseBatchExecutor.class);
 
-    public static final Charset UTF_8 = Charset.forName("UTF-8");
     private HBaseAdmin hBaseAdmin;
     private CatalogTracker catTracker;
 
@@ -49,22 +47,22 @@ public class HbaseBatchExecutor {
         return MetaReader.getTableRegions(catTracker, tableName, true);
     }
 
-    public void majorCompact(ServerName aServer, String regionName) throws IOException {
+    public void majorCompact(ServerName aServer, RegionName regionName) throws IOException {
         AdminProtos.AdminService.BlockingInterface admin = getAdminFromConnection(aServer);
         AdminProtos.CompactRegionRequest request =
-            RequestConverter.buildCompactRegionRequest(regionName.getBytes(UTF_8), true, null);
+            RequestConverter.buildCompactRegionRequest(regionName.toByteBinary(), true, null);
         try {
             admin.compactRegion(null, request);
         } catch (ServiceException se) {
-            throw ProtobufUtil.getRemoteException(se);
+            LOGGER.warn("exception happened, but process continues", ProtobufUtil.getRemoteException(se));
         }
     }
 
     private AdminProtos.GetRegionInfoResponse.CompactionState getCompactionState(
-        AdminProtos.AdminService.BlockingInterface admin, final String regionName) {
+        AdminProtos.AdminService.BlockingInterface admin, final RegionName regionName) {
         try {
             AdminProtos.GetRegionInfoRequest request = RequestConverter.buildGetRegionInfoRequest(
-                regionName.getBytes(UTF_8), true);
+                regionName.toByteBinary(), true);
             AdminProtos.GetRegionInfoResponse response = admin.getRegionInfo(null, request);
             return response.getCompactionState();
         } catch (ServiceException se) {
@@ -89,7 +87,7 @@ public class HbaseBatchExecutor {
                 boolean result;
                 try {
                     AdminProtos.GetRegionInfoResponse.CompactionState compactionState =
-                        getCompactionState(admin, regionInfo.getName());
+                        getCompactionState(admin, regionInfo.getRegionName());
 
                     result = compactionState != null
                         && (compactionState.getNumber() == MAJOR_VALUE
