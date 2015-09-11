@@ -1,7 +1,7 @@
 # smarthbasecompactor
 a smart, automated non-intrusive driver for hbase region-level major-compact. 
 
-It operates on a per server/region level. For every server, it finds regions with most region files, which are the ones that need to be major-compacted the most, then monitor whether the regions have W/R activities. If yes, move to the next region, otherwise issue a major compact command. It also ensure at most it has X number of regions compacting, and X is configurable, so that compact storm wonn't occur.   
+It operates on a per server/region level. For every server, it finds regions with most region files, which are the ones that need to be major-compacted the most, then monitor whether the regions have W/R activities. If yes, move to the next region, otherwise issue a major compact command. It also ensure at most it has X number of regions compacting, and X is configurable, so that compact storm won't occur.   
 
 Parameters:
 * -c,--serverConcurrency <minFileThreshold>   
