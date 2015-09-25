@@ -301,15 +301,20 @@ public class HbaseCompactor {
             for (HTableDescriptor tableDescriptor : aHTableDescriptors) {
                 TableName tableName = tableDescriptor.getTableName();
                 List<HRegionInfo> tableRegions = executor.getTableRegions(tableName);
-                for (HRegionInfo region : tableRegions) {
-                    if (!region.isMetaRegion() && !region.isOffline() && !region.isSplit() && !region.isSplitParent()) {
-                        RegionInfo info = new RegionInfo();
-                        info.setRegionName(region.getRegionName());
-                        info.setTableName(tableName.getNameAsString());
-                        info.setSystemTable(region.getTable().isSystemTable());
-                        info.setColumnFamilyCount(tableDescriptor.getColumnFamilies().length);
-                        regionInfos.put(info.getRegionName(), info);
+                if (tableRegions != null) {
+                    for (HRegionInfo region : tableRegions) {
+                        if (!region.isMetaRegion() && !region.isOffline() && !region.isSplit() && !region
+                            .isSplitParent()) {
+                            RegionInfo info = new RegionInfo();
+                            info.setRegionName(region.getRegionName());
+                            info.setTableName(tableName.getNameAsString());
+                            info.setSystemTable(region.getTable().isSystemTable());
+                            info.setColumnFamilyCount(tableDescriptor.getColumnFamilies().length);
+                            regionInfos.put(info.getRegionName(), info);
+                        }
                     }
+                } else {
+                    LOGGER.warn("cannot find regions for table: {}", tableName);
                 }
             }
         } finally {
