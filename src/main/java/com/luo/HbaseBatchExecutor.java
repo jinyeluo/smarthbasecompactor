@@ -1,3 +1,8 @@
+/**
+ * Copyright(c) 2015 Merkle Inc.  All Rights Reserved.
+ * This software is the proprietary information of Merkle Inc.
+ */
+
 package com.luo;
 
 import com.google.protobuf.ServiceException;
@@ -18,8 +23,7 @@ import java.io.InterruptedIOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.apache.hadoop.hbase.protobuf.generated.AdminProtos.GetRegionInfoResponse.CompactionState
-    .MAJOR_AND_MINOR_VALUE;
+import static org.apache.hadoop.hbase.protobuf.generated.AdminProtos.GetRegionInfoResponse.CompactionState.MAJOR_AND_MINOR_VALUE;
 import static org.apache.hadoop.hbase.protobuf.generated.AdminProtos.GetRegionInfoResponse.CompactionState.MAJOR_VALUE;
 
 public class HbaseBatchExecutor {
@@ -59,10 +63,10 @@ public class HbaseBatchExecutor {
     }
 
     private AdminProtos.GetRegionInfoResponse.CompactionState getCompactionState(
-        AdminProtos.AdminService.BlockingInterface admin, final RegionName regionName) {
+        AdminProtos.AdminService.BlockingInterface admin, final byte[] regionName) {
         try {
             AdminProtos.GetRegionInfoRequest request = RequestConverter.buildGetRegionInfoRequest(
-                regionName.toByteBinary(), true);
+                regionName, true);
             AdminProtos.GetRegionInfoResponse response = admin.getRegionInfo(null, request);
             return response.getCompactionState();
         } catch (ServiceException se) {
@@ -77,6 +81,25 @@ public class HbaseBatchExecutor {
         catTracker.stop();
     }
 
+    public boolean isCompactingRegion(ServerName aServer, byte[] regionName)
+        throws IOException, InterruptedException {
+        AdminProtos.AdminService.BlockingInterface admin = getAdminFromConnection(aServer);
+
+        boolean result;
+        try {
+            AdminProtos.GetRegionInfoResponse.CompactionState compactionState =
+                getCompactionState(admin, regionName);
+
+            result = compactionState != null
+                && (compactionState.getNumber() == MAJOR_VALUE
+                || compactionState.getNumber() == MAJOR_AND_MINOR_VALUE);
+        } catch (IllegalArgumentException e) {
+            result = true;
+            LOGGER.warn("got exception, but will continue", e);
+        }
+        return result;
+    }
+
     public List<RegionInfo> getCompactingRegions(ServerName aServer, List<RegionInfo> aRegionInfos)
         throws IOException, InterruptedException {
         AdminProtos.AdminService.BlockingInterface admin = getAdminFromConnection(aServer);
@@ -87,7 +110,7 @@ public class HbaseBatchExecutor {
                 boolean result;
                 try {
                     AdminProtos.GetRegionInfoResponse.CompactionState compactionState =
-                        getCompactionState(admin, regionInfo.getRegionName());
+                        getCompactionState(admin, regionInfo.getRegionName().toByteBinary());
 
                     result = compactionState != null
                         && (compactionState.getNumber() == MAJOR_VALUE

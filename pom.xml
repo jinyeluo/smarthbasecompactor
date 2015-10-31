@@ -1,4 +1,9 @@
 <?xml version="1.0"?>
+<!--~
+  ~ Copyright(c) 2015 Merkle Inc.  All Rights Reserved.
+  ~ This software is the proprietary information of Merkle Inc.
+  -->
+
 <project
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xmlns="http://maven.apache.org/POM/4.0.0"
@@ -7,7 +12,7 @@
 
     <groupId>com.luo</groupId>
     <artifactId>smarthbasecompactor</artifactId>
-    <version>1.0</version>
+    <version>1.1-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>smarthbasecompactor</name>
     <url>https://github.com/jinyeluo/smarthbasecompactor</url>
@@ -62,6 +67,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
+                <version>2.4</version>
                 <configuration>
                     <archive>
                         <manifest>
@@ -75,6 +81,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
+                <version>2.8</version>
                 <executions>
                     <execution>
                         <goals>
@@ -86,6 +93,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-source-plugin</artifactId>
+                <version>2.4</version>
                 <executions>
                     <execution>
                         <goals>
