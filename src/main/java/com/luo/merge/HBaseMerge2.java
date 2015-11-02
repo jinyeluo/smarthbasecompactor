@@ -5,12 +5,16 @@
 
 package com.luo.merge;
 
+import com.google.protobuf.ServiceException;
 import com.luo.HbaseBatchExecutor;
 import org.apache.commons.lang.ArrayUtils;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.hbase.*;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.HConnection;
+import org.apache.hadoop.hbase.exceptions.DeserializationException;
+import org.apache.hadoop.hbase.protobuf.RequestConverter;
+import org.apache.hadoop.hbase.protobuf.generated.MasterProtos;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
@@ -69,8 +73,10 @@ public class HBaseMerge2 extends Configured implements Tool {
         fillRegionServer(admin, regions);
         Collection<ServerName> serverNames = fillRegionSize(admin, regions);
 
-        if (!hasAnyActivity(admin, regions)) {
-            filterAndMerge(admin, regions, limitMB, serverNames.size());
+        if (regions.size() < serverNames.size()) {
+            LOGGER.info("region size < than server size, no merge needed");
+        } else if (!hasAnyActivity(admin, regions)) {
+            filterAndMerge(admin, regions, limitMB);
         } else {
             LOGGER.info("activity on the table found, do it the next time: {}", tableName);
         }
@@ -107,13 +113,12 @@ public class HBaseMerge2 extends Configured implements Tool {
     }
 
 
-    void filterAndMerge(HBaseAdmin aAdmin, List<MergeRegionInfo> aRegions, long aLimitMB, int aServerSize) throws IOException, InterruptedException {
-        Iterator<MergeRegionInfo> iterator = aRegions.iterator();
-        if (aRegions.size() < aServerSize) {
-            LOGGER.info("region size < than server size, no merge needed");
-            return;
-        }
+    void filterAndMerge(HBaseAdmin aAdmin, List<MergeRegionInfo> aRegions, long aLimitMB)
+        throws IOException, InterruptedException, ServiceException {
+        HConnection connection = aAdmin.getConnection();
+        MasterProtos.MasterService.BlockingInterface master = connection.getMaster();
 
+        Iterator<MergeRegionInfo> iterator = aRegions.iterator();
         int mergedCount = 0;
         HbaseBatchExecutor batchExecutor = new HbaseBatchExecutor(aAdmin);
         while (iterator.hasNext()) {
@@ -137,7 +142,11 @@ public class HBaseMerge2 extends Configured implements Tool {
                     nextRegion.setMerged(true);
                 } else {
                     LOGGER.info("merge {} -- {}", region.getNameAsStr(), nextRegion.getNameAsStr());
-                    merge(aAdmin, region, nextRegion);
+                    byte[] encodedName1 = region.getEncodedName();
+                    byte[] encodedName2 = nextRegion.getEncodedName();
+                    mergeRegions(master, encodedName1, encodedName2, false);
+
+
                     nextRegion.setMerged(true);
                     mergedCount++;
                 }
@@ -145,6 +154,20 @@ public class HBaseMerge2 extends Configured implements Tool {
         }
 
         LOGGER.info("merged count:{}", mergedCount);
+    }
+
+    private void mergeRegions(MasterProtos.MasterService.BlockingInterface masterService,
+                              final byte[] encodedNameOfRegionA,
+                              final byte[] encodedNameOfRegionB, final boolean forcible)
+        throws IOException, ServiceException {
+        try {
+            MasterProtos.DispatchMergingRegionsRequest request = RequestConverter
+                .buildDispatchMergingRegionsRequest(encodedNameOfRegionA,
+                    encodedNameOfRegionB, forcible);
+            masterService.dispatchMergingRegions(null, request);
+        } catch (DeserializationException de) {
+            LOGGER.error("Could not parse destination server name: " + de);
+        }
     }
 
     private MergeRegionInfo getAdjacent(MergeRegionInfo aRegion, List<MergeRegionInfo> aRegions) {
@@ -155,10 +178,6 @@ public class HBaseMerge2 extends Configured implements Tool {
             }
         }
         return null;
-    }
-
-    private void merge(HBaseAdmin aAdmin, MergeRegionInfo aRegion1, MergeRegionInfo aRegion2) throws IOException {
-        aAdmin.mergeRegions(aRegion1.getEncodedName(), aRegion2.getEncodedName(), false);
     }
 
     private Collection<ServerName> fillRegionSize(HBaseAdmin aAdmin, List<MergeRegionInfo> infos) {
