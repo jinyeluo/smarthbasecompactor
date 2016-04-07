@@ -134,7 +134,8 @@ public class HBaseMerge2 extends Configured implements Tool {
                 if (nextRegion == null) {
                     LOGGER.info("no adjancent region found:{}", region.getNameAsStr());
                 } else if (nextRegion.getSizeMB() + region.getSizeMB() >= aLimitMB) {
-                    LOGGER.info("size too big after merge:{} {}MB", region.getNameAsStr(), region.getSizeMB());
+                    LOGGER.info("size too big after merge:{} {}MB", region.getNameAsStr(),
+                        nextRegion.getSizeMB() + region.getSizeMB());
                 } else if (batchExecutor.isCompactingRegion(region.getServerName(), region.getName())
                     || batchExecutor.isCompactingRegion(nextRegion.getServerName(), nextRegion.getName())) {
                     LOGGER.info("one of region is compacting, skip {} --- {}", region.getNameAsStr(),
