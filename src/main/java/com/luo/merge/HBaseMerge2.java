@@ -73,10 +73,9 @@ public class HBaseMerge2 extends Configured implements Tool {
         fillRegionServer(admin, regions);
         Collection<ServerName> serverNames = fillRegionSize(admin, regions);
 
-        if (regions.size() < serverNames.size()) {
-            LOGGER.info("region size < than server size, no merge needed");
-        } else if (!hasAnyActivity(admin, regions)) {
-            filterAndMerge(admin, regions, limitMB);
+        boolean smallTable = regions.size() < serverNames.size();
+        if (!hasAnyActivity(admin, regions)) {
+            filterAndMerge(admin, regions, limitMB, smallTable);
         } else {
             LOGGER.info("activity on the table found, do it the next time: {}", tableName);
         }
@@ -113,7 +112,7 @@ public class HBaseMerge2 extends Configured implements Tool {
     }
 
 
-    void filterAndMerge(HBaseAdmin aAdmin, List<MergeRegionInfo> aRegions, long aLimitMB)
+    void filterAndMerge(HBaseAdmin aAdmin, List<MergeRegionInfo> aRegions, long aLimitMB, boolean aSmallTable)
         throws IOException, InterruptedException, ServiceException {
         HConnection connection = aAdmin.getConnection();
         MasterProtos.MasterService.BlockingInterface master = connection.getMaster();
@@ -129,6 +128,8 @@ public class HBaseMerge2 extends Configured implements Tool {
 //                LOGGER.info("region size too big:{} {}MB", region.getNameAsStr(), region.getSizeMB());
             } else if (region.getSizeMB() > aLimitMB) {
                 LOGGER.info("region size too big:{} {}MB", region.getNameAsStr(), region.getSizeMB());
+            } else if (aSmallTable && region.getSizeMB() > 1) {
+                LOGGER.info("skip non-empty region for small table:", region.getNameAsStr(), region.getSizeMB());
             } else {
                 MergeRegionInfo nextRegion = getAdjacent(region, aRegions);
                 if (nextRegion == null) {
