@@ -12,7 +12,7 @@
 
     <groupId>com.luo</groupId>
     <artifactId>smarthbasecompactor</artifactId>
-    <version>1.2-SNAPSHOT</version>
+    <version>1.2</version>
     <packaging>jar</packaging>
     <name>smarthbasecompactor</name>
     <url>https://github.com/jinyeluo/smarthbasecompactor</url>
