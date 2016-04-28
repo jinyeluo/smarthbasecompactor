@@ -6,15 +6,14 @@
 package com.luo;
 
 import com.google.protobuf.ServiceException;
-import org.apache.hadoop.hbase.HRegionInfo;
-import org.apache.hadoop.hbase.ServerName;
-import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.*;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.ClusterConnection;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.protobuf.RequestConverter;
 import org.apache.hadoop.hbase.protobuf.generated.AdminProtos;
+import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,18 +24,22 @@ import java.util.List;
 import static org.apache.hadoop.hbase.protobuf.generated.AdminProtos.GetRegionInfoResponse.CompactionState.MAJOR_AND_MINOR_VALUE;
 import static org.apache.hadoop.hbase.protobuf.generated.AdminProtos.GetRegionInfoResponse.CompactionState.MAJOR_VALUE;
 
-public class HbaseBatchExecutor {
+public class HbaseBatchExecutor implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger(HbaseBatchExecutor.class);
-
+    private static final String ZK_IDENTIFIER_PREFIX = "hbase-admin-on-";
+    private final ZooKeeperWatcher zookeeper;
     private Admin hBaseAdmin;
 
     public HbaseBatchExecutor(Admin aHBaseAdmin) throws IOException {
         hBaseAdmin = aHBaseAdmin;
+        Connection connection = hBaseAdmin.getConnection();
+        zookeeper = new ZooKeeperWatcher(hBaseAdmin.getConfiguration(),
+            ZK_IDENTIFIER_PREFIX + connection.toString(), new ThrowableAbortable());
     }
 
     public List<HRegionInfo> getTableRegions(final TableName tableName)
         throws IOException {
-        return hBaseAdmin.getTableRegions(tableName);
+        return MetaTableAccessor.getTableRegions(zookeeper, hBaseAdmin.getConnection(), tableName, true);
     }
 
     public void majorCompact(ServerName aServer, RegionName regionName) throws IOException {
@@ -66,6 +69,7 @@ public class HbaseBatchExecutor {
     }
 
     public void close() {
+        zookeeper.close();
     }
 
     public boolean isCompactingRegion(ServerName aServer, byte[] regionName)
@@ -121,4 +125,16 @@ public class HbaseBatchExecutor {
         return clusterConnection.getAdmin(aServer);
     }
 
+    private static class ThrowableAbortable implements Abortable {
+
+        @Override
+        public void abort(String why, Throwable e) {
+            throw new RuntimeException(why, e);
+        }
+
+        @Override
+        public boolean isAborted() {
+            return true;
+        }
+    }
 }
