@@ -2,8 +2,9 @@ package com.luo;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.*;
-import org.apache.hadoop.hbase.client.HBaseAdmin;
-import org.apache.hadoop.hbase.client.HConnection;
+import org.apache.hadoop.hbase.client.Admin;
+import org.apache.hadoop.hbase.client.Connection;
+import org.apache.hadoop.hbase.client.ConnectionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,17 +32,17 @@ public class HbaseCompactor {
     }
 
     public void collectCompactInfo(Configuration conf) throws IOException, InterruptedException {
-        HBaseAdmin hBaseAdmin = new HBaseAdmin(conf);
-        HConnection connection = hBaseAdmin.getConnection();
-        Map<RegionName, RegionInfo> regionInfoMap =
-            constructInitialRegionInfos(hBaseAdmin, connection.listTables());
 
-        ClusterStatus clusterStatus = hBaseAdmin.getClusterStatus();
-        Collection<ServerName> servers = clusterStatus.getServers();
-        HbaseBatchExecutor executor = null;
+        try (Connection connection = ConnectionFactory.createConnection(conf)) {
+            Admin hBaseAdmin = connection.getAdmin();
 
-        try {
-            executor = new HbaseBatchExecutor(hBaseAdmin);
+            HTableDescriptor[] hTableDescriptors = hBaseAdmin.listTables();
+            Map<RegionName, RegionInfo> regionInfoMap =
+                constructInitialRegionInfos(hBaseAdmin, hTableDescriptors);
+
+            ClusterStatus clusterStatus = hBaseAdmin.getClusterStatus();
+            Collection<ServerName> servers = clusterStatus.getServers();
+            HbaseBatchExecutor executor = new HbaseBatchExecutor(hBaseAdmin);
 
             for (ServerName server : servers) {
                 if (server != null) {
@@ -64,24 +65,21 @@ public class HbaseCompactor {
                     addToCompactedSet(server, compactingRegionsOnAServer);
                 }
             }
-        } finally {
-            if (executor != null) {
-                executor.close();
-            }
         }
 
         printoutFilteredRegions(compactingRegions);
     }
 
     public void printOutRegionsPerServer(Configuration conf) throws IOException {
-        HBaseAdmin hBaseAdmin = new HBaseAdmin(conf);
-        HConnection connection = hBaseAdmin.getConnection();
-        HTableDescriptor[] hTableDescriptors = connection.listTables();
+        try (Connection connection = ConnectionFactory.createConnection(conf)) {
+            Admin hBaseAdmin = connection.getAdmin();
 
-        Map<RegionName, RegionInfo> regionInfos = constructInitialRegionInfos(hBaseAdmin, hTableDescriptors);
-        collectRegionMetrics(regionInfos, hBaseAdmin);
-        LOGGER.info("total regions: {}", regionInfos.size());
-        printoutCompactDetail(filterRegions(regionInfos));
+            HTableDescriptor[] hTableDescriptors = hBaseAdmin.listTables();
+            Map<RegionName, RegionInfo> regionInfos = constructInitialRegionInfos(hBaseAdmin, hTableDescriptors);
+            collectRegionMetrics(regionInfos, hBaseAdmin);
+            LOGGER.info("total regions: {}", regionInfos.size());
+            printoutCompactDetail(filterRegions(regionInfos));
+        }
     }
 
     public void majorCompact(Configuration conf, int runTimeInMinute) throws IOException, InterruptedException {
@@ -96,22 +94,23 @@ public class HbaseCompactor {
         int loop = 1;
         while (System.currentTimeMillis() < stopTime) {
             LOGGER.info(">>>>>>>> round: {} >>>>>>>>>>>", loop);
+            try (Connection connection = ConnectionFactory.createConnection(conf)) {
+                Admin hBaseAdmin = connection.getAdmin();
 
-            HBaseAdmin hBaseAdmin = new HBaseAdmin(conf);
-            HConnection connection = hBaseAdmin.getConnection();
-            HTableDescriptor[] hTableDescriptors = connection.listTables();
+                HTableDescriptor[] hTableDescriptors = hBaseAdmin.listTables();
 
-            Map<RegionName, RegionInfo> regionInfos = constructInitialRegionInfos(hBaseAdmin, hTableDescriptors);
+                Map<RegionName, RegionInfo> regionInfos = constructInitialRegionInfos(hBaseAdmin, hTableDescriptors);
 
-            collectRegionMetrics(regionInfos, hBaseAdmin);
+                collectRegionMetrics(regionInfos, hBaseAdmin);
 
-            Map<ServerName, List<RegionInfo>> filteredRegions = filterRegions(regionInfos);
-            printoutCompactSummary(filteredRegions);
+                Map<ServerName, List<RegionInfo>> filteredRegions = filterRegions(regionInfos);
+                printoutCompactSummary(filteredRegions);
 
-            waitAMinute();
+                waitAMinute();
 
-            findNonActiveRegionsAndCompact(hBaseAdmin, filteredRegions);
-            loop++;
+                findNonActiveRegionsAndCompact(hBaseAdmin, filteredRegions);
+                loop++;
+            }
         }
     }
 
@@ -144,8 +143,8 @@ public class HbaseCompactor {
         }
     }
 
-    private void findNonActiveRegionsAndCompact(HBaseAdmin aHBaseAdmin,
-        Map<ServerName, List<RegionInfo>> aFilteredRegions) throws IOException, InterruptedException {
+    private void findNonActiveRegionsAndCompact(Admin aHBaseAdmin,
+                                                Map<ServerName, List<RegionInfo>> aFilteredRegions) throws IOException, InterruptedException {
         ClusterStatus clusterStatus = aHBaseAdmin.getClusterStatus();
 
         HbaseBatchExecutor executor = null;
@@ -266,7 +265,7 @@ public class HbaseCompactor {
     }
 
     protected void collectRegionMetrics(Map<RegionName, RegionInfo> aRegionInfos,
-        HBaseAdmin hBaseAdmin) throws IOException {
+                                        Admin hBaseAdmin) throws IOException {
         ClusterStatus clusterStatus = hBaseAdmin.getClusterStatus();
 
         Collection<ServerName> servers = clusterStatus.getServers();
@@ -290,8 +289,8 @@ public class HbaseCompactor {
         }
     }
 
-    protected Map<RegionName, RegionInfo> constructInitialRegionInfos(HBaseAdmin aHBaseAdmin,
-        HTableDescriptor[] aHTableDescriptors) throws IOException {
+    protected Map<RegionName, RegionInfo> constructInitialRegionInfos(Admin aHBaseAdmin,
+                                                                      HTableDescriptor[] aHTableDescriptors) throws IOException {
         Map<RegionName, RegionInfo> regionInfos = new HashMap<>();
 
         HbaseBatchExecutor executor = null;
@@ -324,18 +323,6 @@ public class HbaseCompactor {
         }
 
         return regionInfos;
-    }
-
-    private static class RegionInfoComparator implements Comparator<RegionInfo> {
-        @Override
-        public int compare(RegionInfo o1, RegionInfo o2) {
-            int delta = o2.getFileCountMinusCF() - o1.getFileCountMinusCF();
-            if (delta != 0) {
-                return delta;
-            } else {
-                return o2.getRegionName().toString().compareTo(o1.getRegionName().toString());
-            }
-        }
     }
 
     private int checkCompactingRegions(ServerName server, HbaseBatchExecutor aExecutor)
@@ -376,5 +363,17 @@ public class HbaseCompactor {
             compactedRegions.put(aServer, regions);
         }
         regions.add(aCompacting.getRegionName());
+    }
+
+    private static class RegionInfoComparator implements Comparator<RegionInfo> {
+        @Override
+        public int compare(RegionInfo o1, RegionInfo o2) {
+            int delta = o2.getFileCountMinusCF() - o1.getFileCountMinusCF();
+            if (delta != 0) {
+                return delta;
+            } else {
+                return o2.getRegionName().toString().compareTo(o1.getRegionName().toString());
+            }
+        }
     }
 }

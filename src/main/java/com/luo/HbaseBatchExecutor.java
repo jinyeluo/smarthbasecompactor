@@ -9,9 +9,9 @@ import com.google.protobuf.ServiceException;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.catalog.CatalogTracker;
-import org.apache.hadoop.hbase.catalog.MetaReader;
-import org.apache.hadoop.hbase.client.HBaseAdmin;
+import org.apache.hadoop.hbase.client.Admin;
+import org.apache.hadoop.hbase.client.ClusterConnection;
+import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.protobuf.RequestConverter;
 import org.apache.hadoop.hbase.protobuf.generated.AdminProtos;
@@ -19,7 +19,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.io.InterruptedIOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -29,26 +28,15 @@ import static org.apache.hadoop.hbase.protobuf.generated.AdminProtos.GetRegionIn
 public class HbaseBatchExecutor {
     private static final Logger LOGGER = LoggerFactory.getLogger(HbaseBatchExecutor.class);
 
-    private HBaseAdmin hBaseAdmin;
-    private CatalogTracker catTracker;
+    private Admin hBaseAdmin;
 
-    public HbaseBatchExecutor(HBaseAdmin aHBaseAdmin) throws IOException {
+    public HbaseBatchExecutor(Admin aHBaseAdmin) throws IOException {
         hBaseAdmin = aHBaseAdmin;
-        synchronized (this) {
-            catTracker = null;
-            try {
-                catTracker = new CatalogTracker(aHBaseAdmin.getConfiguration());
-                catTracker.start();
-            } catch (InterruptedException e) {
-                // Let it out as an IOE for now until we redo all so tolerate IEs
-                throw (InterruptedIOException) new InterruptedIOException("Interrupted").initCause(e);
-            }
-        }
     }
 
     public List<HRegionInfo> getTableRegions(final TableName tableName)
         throws IOException {
-        return MetaReader.getTableRegions(catTracker, tableName, true);
+        return hBaseAdmin.getTableRegions(tableName);
     }
 
     public void majorCompact(ServerName aServer, RegionName regionName) throws IOException {
@@ -78,7 +66,6 @@ public class HbaseBatchExecutor {
     }
 
     public void close() {
-        catTracker.stop();
     }
 
     public boolean isCompactingRegion(ServerName aServer, byte[] regionName)
@@ -129,7 +116,9 @@ public class HbaseBatchExecutor {
     }
 
     protected AdminProtos.AdminService.BlockingInterface getAdminFromConnection(ServerName aServer) throws IOException {
-        return hBaseAdmin.getConnection().getAdmin(aServer, false);
+        Connection connection = hBaseAdmin.getConnection();
+        ClusterConnection clusterConnection = (ClusterConnection) connection;
+        return clusterConnection.getAdmin(aServer);
     }
 
 }

@@ -2,11 +2,9 @@
 export USER_LIB=/usr/hdp/current
 export HBASE_CONFIG=/etc/hbase/conf
 
-export HADOOP_CLASSPATH=${HBASE_CONFIG}
-export HADOOP_LIB_JARS=${HBASE_CONFIG}
+export HBASE_COMMON_JAR=${USER_LIB}/hbase-client/lib/hbase-common.jar
+export HBASE_CLIENT_JAR=${USER_LIB}/hbase-client/lib/hbase-client.jar
+export HBASE_PROTOCOL_JAR=${USER_LIB}/hbase-client/lib/hbase-protocol.jar
 
-for f in ${USER_LIB}/hbase-client/lib/*.jar;do
-    export HADOOP_CLASSPATH=${HADOOP_CLASSPATH}:$f;
-    export HADOOP_LIB_JARS=${HADOOP_LIB_JARS},$f;
-done
-
+export HADOOP_CLASSPATH=${HBASE_CONFIG}:$HBASE_COMMON_JAR:$HBASE_CLIENT_JAR:$HBASE_PROTOCOL_JAR
+export HADOOP_LIB_JARS=${HBASE_CONFIG},$HBASE_COMMON_JAR,$HBASE_CLIENT_JAR,$HBASE_PROTOCOL_JAR
