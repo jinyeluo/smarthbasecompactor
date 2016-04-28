@@ -37,7 +37,7 @@ public class HbaseCompactor implements AutoCloseable {
 
         HTableDescriptor[] hTableDescriptors = hBaseAdmin.listTables();
         Map<RegionName, RegionInfo> regionInfoMap =
-            constructInitialRegionInfos(hBaseAdmin, hTableDescriptors);
+            constructInitialRegionInfos(hTableDescriptors);
 
         ClusterStatus clusterStatus = hBaseAdmin.getClusterStatus();
         Collection<ServerName> servers = clusterStatus.getServers();
@@ -72,7 +72,7 @@ public class HbaseCompactor implements AutoCloseable {
             Admin hBaseAdmin = connection.getAdmin();
 
             HTableDescriptor[] hTableDescriptors = hBaseAdmin.listTables();
-            Map<RegionName, RegionInfo> regionInfos = constructInitialRegionInfos(hBaseAdmin, hTableDescriptors);
+            Map<RegionName, RegionInfo> regionInfos = constructInitialRegionInfos(hTableDescriptors);
             collectRegionMetrics(regionInfos, hBaseAdmin);
             LOGGER.info("total regions: {}", regionInfos.size());
             printoutCompactDetail(filterRegions(regionInfos));
@@ -93,7 +93,7 @@ public class HbaseCompactor implements AutoCloseable {
             LOGGER.info(">>>>>>>> round: {} >>>>>>>>>>>", loop);
             HTableDescriptor[] hTableDescriptors = hBaseAdmin.listTables();
 
-            Map<RegionName, RegionInfo> regionInfos = constructInitialRegionInfos(hBaseAdmin, hTableDescriptors);
+            Map<RegionName, RegionInfo> regionInfos = constructInitialRegionInfos(hTableDescriptors);
 
             collectRegionMetrics(regionInfos, hBaseAdmin);
 
@@ -273,8 +273,7 @@ public class HbaseCompactor implements AutoCloseable {
         }
     }
 
-    protected Map<RegionName, RegionInfo> constructInitialRegionInfos(Admin aHBaseAdmin,
-                                                                      HTableDescriptor[] aHTableDescriptors) throws IOException {
+    protected Map<RegionName, RegionInfo> constructInitialRegionInfos(HTableDescriptor[] aHTableDescriptors) throws IOException {
         Map<RegionName, RegionInfo> regionInfos = new HashMap<>();
 
         for (HTableDescriptor tableDescriptor : aHTableDescriptors) {

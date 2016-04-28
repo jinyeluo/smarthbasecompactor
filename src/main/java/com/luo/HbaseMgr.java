@@ -34,8 +34,8 @@ public class HbaseMgr extends Configured implements Tool {
                 parser.getServerConcurrency(), connection.getAdmin())) {
                 hbaseCompactor.collectCompactInfo();
                 hbaseCompactor.majorCompact(parser.getTimePeriod());
-            };
-        };
+            }
+        }
         return 0;
     }
 }
