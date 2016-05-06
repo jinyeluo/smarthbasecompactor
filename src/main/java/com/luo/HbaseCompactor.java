@@ -69,13 +69,13 @@ public class HbaseCompactor implements AutoCloseable {
 
     public void printOutRegionsPerServer(Configuration conf) throws IOException {
         try (Connection connection = ConnectionFactory.createConnection(conf)) {
-            Admin hBaseAdmin = connection.getAdmin();
-
-            HTableDescriptor[] hTableDescriptors = hBaseAdmin.listTables();
-            Map<RegionName, RegionInfo> regionInfos = constructInitialRegionInfos(hTableDescriptors);
-            collectRegionMetrics(regionInfos, hBaseAdmin);
-            LOGGER.info("total regions: {}", regionInfos.size());
-            printoutCompactDetail(filterRegions(regionInfos));
+            try (Admin hBaseAdmin = connection.getAdmin()) {
+                HTableDescriptor[] hTableDescriptors = hBaseAdmin.listTables();
+                Map<RegionName, RegionInfo> regionInfos = constructInitialRegionInfos(hTableDescriptors);
+                collectRegionMetrics(regionInfos, hBaseAdmin);
+                LOGGER.info("total regions: {}", regionInfos.size());
+                printoutCompactDetail(filterRegions(regionInfos));
+            }
         }
     }
 

@@ -4,6 +4,7 @@ import org.apache.commons.lang.ArrayUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.hbase.HBaseConfiguration;
+import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
 import org.apache.hadoop.util.Tool;
@@ -30,10 +31,12 @@ public class HbaseMgr extends Configured implements Tool {
 
         Configuration config = HBaseConfiguration.create(getConf());
         try (Connection connection = ConnectionFactory.createConnection(config)) {
-            try (HbaseCompactor hbaseCompactor = new HbaseCompactor(parser.getMinFileCount(),
-                parser.getServerConcurrency(), connection.getAdmin())) {
-                hbaseCompactor.collectCompactInfo();
-                hbaseCompactor.majorCompact(parser.getTimePeriod());
+            try (Admin admin = connection.getAdmin()) {
+                try (HbaseCompactor hbaseCompactor = new HbaseCompactor(parser.getMinFileCount(),
+                    parser.getServerConcurrency(), admin)) {
+                    hbaseCompactor.collectCompactInfo();
+                    hbaseCompactor.majorCompact(parser.getTimePeriod());
+                }
             }
         }
         return 0;
